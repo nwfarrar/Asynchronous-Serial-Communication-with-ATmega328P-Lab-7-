@@ -1,0 +1,100 @@
+/*
+ * Lab 7 Receiver.cpp
+ *
+ * Created: 4/5/2020 10:31:00 AM
+ * Author : Nathan Farrar
+ */ 
+
+//Rx Chip
+
+//** GLOBAL VARIABLES **/
+long freqclk = 16000000; // clock frequency in Hz
+char sensorvalue = 0; // value read from analog sensor (0-1023)
+
+
+//** FUNCTION DECLARATIONS **//
+void wait(volatile int N);  // Note that variables in the delay loops are declared as volatile.  If not, the compiler will likely
+// see these as not necessary since they are not used for any important tasks or I/O and will eliminate the loops.  In fact, if
+// the simulator is used without these being declared volatile, then the loops will be ignored all together in the simulation,
+// and the cycle counter will not grow correctly.
+void delay_1_msec_raw_count();
+
+void initialize_usart(); // function to set up USART
+void transmit_data_usart(unsigned char data);
+
+
+#include <avr/io.h>
+
+
+int main(void)
+{
+    DDRC = 0b11111111; // C0-C6 set as output for LED's
+	DDRD = 0b00000000; // D0-D7 set as input for Tx
+	
+	int data; // variable with which to receive incoming data	
+	initialize_usart(); // Initialize the USART with desired parameters   (this will override PD0 and PD1 digital output functions)
+	
+    while (1) 
+    {
+		while (!(UCSR0A & 0b10000000)); // ((! (UCSR0A & (1<<RXC0)));  // Wait until new data arrives
+	    data =  UDR0; // read the data
+		
+		PORTC = 0b00000000; // Lights are all turned off
+		PORTC = data >> 2; // bit shift right two places
+		wait(5);
+    }
+	return 0;
+}
+
+
+//=========================================
+// S U B R O U T I N E S
+//=========================================
+
+void wait(volatile int N) {
+	//*** wait ***
+		
+	/* This subroutine creates a delay of N msec by calling another function.
+			Inputs: N = number of msec for the delay (N is int, so can be up to 65,536 msec)
+			Outputs: None
+			
+		Why is N a volatile variable? Some C compilers try to optimize the code and may eliminate code that appears to do nothing.  A time-killing 
+		loop is is one of those code blocks that could be removed during compile.  Using a nonvolatile variable in the function tells the compiler not 
+		remove it.
+	*/
+	while (N>1) {  // This loop creates an N msec delay
+		N=N-1;
+		delay_1_msec_raw_count();
+	}
+} // end wait()
+
+void delay_1_msec_raw_count() {
+    //*** delay N ms **
+    /* This subroutine creates a delay of N msec by using a raw time-killing count.
+			Inputs: None
+			Outputs: None
+	*/
+	volatile int count = (freqclk/1000-28)/4; // each cycle takes 4 clock cycles, so count is the number of cycles needed to create a 1 msec delay.
+									// 28 is the approximate number of other clock cycles used in the subroutine
+	while (count > 1) {  // This loop is expected to create a 1 msec delay, but it is in fact much longer.  Because of the size of the variables,
+			// there is a lot more that needs to be done each cycle so the loop takes much longer than 1 msec to execute. To know exact time for each 
+			// instruction, use assembly language instead of C. (Or look at the disassembly code file and count instructions.)
+			count--; // decrement count
+	}
+	
+		
+} // end delay_1_msec_raw_count()
+
+void initialize_usart(void) // function to set up USART
+{
+	UCSR0B = (1<<RXEN0); // enable serial transmission
+	UCSR0C = (1<<UCSZ01) | (1<<UCSZ00) ; // Asynchronous mode, 8-bit data; no parity; 1 stop bit 
+	UBRR0L = 0x33; // 9,600 baud if Fosc = 16MHz
+	// using chip's internal clock at 8MHZ so baud rate is 19200, UBRR0L = 0x33
+}
+
+void transmit_data_usart(unsigned char data) // Function to transmit a character
+{ //replace data with sensorvalue????
+	while (!(UCSR0A & (1<<UDRE0))); // Poll to make sure transmit buffer is ready, // then send data
+	UDR0 = data;
+}
